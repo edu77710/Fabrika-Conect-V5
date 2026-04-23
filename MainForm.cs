@@ -35,6 +35,7 @@ namespace FotoEnvio
         // ── Aba Configurações ──────────────────────────────────────────
         private TextBox txtDiretorio, txtServidorNAS, txtDownloadFtp;
         private Button btnBrowseDiretorio, btnSalvarConfig, btnBrowseDownloadFtp;
+        private CheckBox chkCriarSubpastaData;
         private CheckBox chkVerificarConexao;
 
         // ── Estado ────────────────────────────────────────────────────
@@ -341,6 +342,16 @@ namespace FotoEnvio
             grp.Controls.AddRange(new Control[] { txtDownloadFtp, btnBrowseDownloadFtp });
             y += 50;
 
+            // opção: criar subpastas com a data
+            chkCriarSubpastaData = new CheckBox
+            {
+                Text = "Criar subpasta com a data (YYYYMMDD) ao salvar downloads FTP",
+                Location = new Point(12, y), AutoSize = true,
+                Font = new Font("Segoe UI", 9.5f)
+            };
+            grp.Controls.Add(chkCriarSubpastaData);
+            y += 26;
+
             // ── Servidor NAS ───────────────────────────────────────────
             grp.Controls.Add(MakeLabel("🌐  Caminho do Servidor NAS (destino das fotos de clientes):", 12, y));
             y += 20;
@@ -617,6 +628,7 @@ namespace FotoEnvio
             txtDownloadFtp.Text         = SettingsManager.Current.DiretorioDownloadFtp;
             txtServidorNAS.Text         = SettingsManager.Current.ServidorNAS;
             chkVerificarConexao.Checked = SettingsManager.Current.VerificarConexaoAoIniciar;
+            if (chkCriarSubpastaData != null) chkCriarSubpastaData.Checked = SettingsManager.Current.CriarSubpastaData;
         }
 
         private void LimparFormulario()

@@ -211,12 +211,23 @@ namespace FotoEnvio
         {
             if (_ftpManual == null) return;
 
-            string destino = SettingsManager.Current.DiretorioDownloadFtp;
-            if (string.IsNullOrWhiteSpace(destino) || !Directory.Exists(destino))
+            string baseDestino = SettingsManager.Current.DiretorioDownloadFtp;
+            if (string.IsNullOrWhiteSpace(baseDestino) || !Directory.Exists(baseDestino))
             {
                 Info("Configure o Diretório de Download FTP na aba Configurações antes de baixar.");
                 tabControl.SelectedTab = tabConfig;
                 return;
+            }
+            // Se a opção estiver ativada, cria uma subpasta com a data atual (YYYYMMDD)
+            string destino = baseDestino;
+            bool criarSubpasta = true;
+            if (chkCriarSubpastaData != null) criarSubpasta = chkCriarSubpastaData.Checked;
+            else criarSubpasta = SettingsManager.Current.CriarSubpastaData;
+            if (criarSubpasta)
+            {
+                string sub = Path.Combine(baseDestino, DateTime.Now.ToString("yyyyMMdd"));
+                if (!Directory.Exists(sub)) Directory.CreateDirectory(sub);
+                destino = sub;
             }
 
             btnBuscarManual.Enabled      = false;

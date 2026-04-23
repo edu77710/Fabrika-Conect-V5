@@ -25,6 +25,8 @@ namespace FotoEnvio
         public string FtpSenhaAuto           { get; set; } = "android@";
         public string FtpRangeInicio         { get; set; } = "1";
         public string FtpRangeFim            { get; set; } = "254";
+        // Create dated subfolders for FTP downloads
+        public bool   CriarSubpastaData      { get; set; } = true;
     }
 
     public static class SettingsManager
