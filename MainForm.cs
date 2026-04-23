@@ -58,6 +58,30 @@ namespace FotoEnvio
             this.Font = new Font("Segoe UI", 9.5f);
             this.BackColor = Color.FromArgb(245, 247, 250);
 
+            // ── Rodapé fixo (aparece em todas as abas) ─────────────────
+            var pnlRodape = new Panel
+            {
+                Dock      = DockStyle.Bottom,
+                Height    = 22,
+                BackColor = Color.FromArgb(30, 41, 59)
+            };
+            var lblCredito = new Label
+            {
+                Text      = "Desenvolvido por E.F.S.",
+                Font      = new Font("Segoe UI", 7.5f, FontStyle.Regular),
+                ForeColor = Color.FromArgb(148, 163, 184),
+                AutoSize  = true
+            };
+            // Centraliza verticalmente após o painel existir
+            pnlRodape.Controls.Add(lblCredito);
+            pnlRodape.Layout += (s, e) =>
+            {
+                lblCredito.Location = new Point(
+                    (pnlRodape.Width - lblCredito.Width) / 2,
+                    (pnlRodape.Height - lblCredito.Height) / 2);
+            };
+            this.Controls.Add(pnlRodape);
+
             tabControl = new TabControl
             {
                 Dock = DockStyle.Fill,
