@@ -19,8 +19,7 @@ namespace FotoEnvio
         // ── Aba Envio ──────────────────────────────────────────────────
         private Panel panelInicio, panelDados, panelProgresso, panelSucesso;
         private Button btnNovoCliente;
-        private ListView lstFotos;
-        private ImageList imageListFotos;
+        private ListBox lstFotos;
         private Button btnAdicionarFotos, btnRemoverFoto;
         private Label lblFotosCount;
         private TextBox txtNome, txtEmail, txtTelefone;
@@ -35,8 +34,8 @@ namespace FotoEnvio
         // ── Aba Configurações ──────────────────────────────────────────
         private TextBox txtDiretorio, txtServidorNAS, txtDownloadFtp;
         private Button btnBrowseDiretorio, btnSalvarConfig, btnBrowseDownloadFtp;
-        private CheckBox chkCriarSubpastaData;
         private CheckBox chkVerificarConexao;
+        private CheckBox chkSubpastaData;
 
         // ── Estado ────────────────────────────────────────────────────
         private List<string> _fotos = new List<string>();
@@ -172,30 +171,13 @@ namespace FotoEnvio
 
             lblFotosCount = MakeLabel("0 foto(s)", 322, 33, null, Color.FromArgb(120, 130, 150));
 
-            imageListFotos = new ImageList { ImageSize = new Size(160, 120), ColorDepth = ColorDepth.Depth32Bit };
-
-            lstFotos = new ListView
+            lstFotos = new ListBox
             {
                 Location = new Point(10, 66),
                 Size = new Size(445, 280),
                 Font = new Font("Segoe UI", 8.5f),
-                View = View.LargeIcon,
-                MultiSelect = true,
-                BorderStyle = BorderStyle.FixedSingle,
-                HideSelection = false,
-                LargeImageList = imageListFotos
-            };
-            // Enable drag & drop
-            lstFotos.AllowDrop = true;
-            lstFotos.DragEnter += (s, e) =>
-            {
-                if (e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop)) e.Effect = DragDropEffects.Copy;
-            };
-            lstFotos.DragDrop += (s, e) =>
-            {
-                if (e.Data == null || !e.Data.GetDataPresent(DataFormats.FileDrop)) return;
-                var files = ((string[])e.Data.GetData(DataFormats.FileDrop)).Where(f => File.Exists(f));
-                AddFiles(files);
+                SelectionMode = SelectionMode.MultiExtended,
+                BorderStyle = BorderStyle.FixedSingle
             };
 
             grpFotos.Controls.AddRange(new Control[]
@@ -282,10 +264,9 @@ namespace FotoEnvio
             if (panelSucesso.Width < 10) return;
             int cx = panelSucesso.Width / 2;
             int cy = panelSucesso.Height / 2;
-            // move icon further up so it doesn't overlap the detail label
-            lblSucessoIcon.Location    = new Point(cx - lblSucessoIcon.Width / 2,    cy - 200);
-            lblSucesso.Location        = new Point(cx - lblSucesso.Width / 2,        cy - 100);
-            lblSucessoDetalhe.Location = new Point(cx - lblSucessoDetalhe.Width / 2, cy - 56);
+            lblSucessoIcon.Location    = new Point(cx - lblSucessoIcon.Width / 2,    cy - 150);
+            lblSucesso.Location        = new Point(cx - lblSucesso.Width / 2,        cy - 80);
+            lblSucessoDetalhe.Location = new Point(cx - lblSucessoDetalhe.Width / 2, cy - 38);
             btnNovoClienteApos.Location = new Point(cx - btnNovoClienteApos.Width / 2, cy + 20);
         }
 
@@ -340,17 +321,17 @@ namespace FotoEnvio
             btnBrowseDownloadFtp.Location = new Point(658, y);
             btnBrowseDownloadFtp.Click += BtnBrowseDownloadFtp_Click;
             grp.Controls.AddRange(new Control[] { txtDownloadFtp, btnBrowseDownloadFtp });
-            y += 50;
 
-            // opção: criar subpastas com a data
-            chkCriarSubpastaData = new CheckBox
+            // ── Checkbox subpasta com data (colado ao diretório FTP) ───
+            chkSubpastaData = new CheckBox
             {
-                Text = "Criar subpasta com a data (YYYYMMDD) ao salvar downloads FTP",
-                Location = new Point(12, y), AutoSize = true,
-                Font = new Font("Segoe UI", 9.5f)
+                Text = "📅  Criar subpasta com a data de hoje automaticamente (ex: 20260423)",
+                Location = new Point(12, y + 30), AutoSize = true,
+                Font = new Font("Segoe UI", 9f), Cursor = Cursors.Hand,
+                ForeColor = Color.FromArgb(37, 99, 235)
             };
-            grp.Controls.Add(chkCriarSubpastaData);
-            y += 26;
+            grp.Controls.Add(chkSubpastaData);
+            y += 58;
 
             // ── Servidor NAS ───────────────────────────────────────────
             grp.Controls.Add(MakeLabel("🌐  Caminho do Servidor NAS (destino das fotos de clientes):", 12, y));
@@ -423,67 +404,24 @@ namespace FotoEnvio
                 Multiselect = true
             };
             if (ofd.ShowDialog() != DialogResult.OK) return;
-            AddFiles(ofd.FileNames);
+            foreach (string f in ofd.FileNames)
+                if (!_fotos.Contains(f))
+                {
+                    _fotos.Add(f);
+                    lstFotos.Items.Add(Path.GetFileName(f));
+                }
+            AtualizarContador();
         }
 
         private void BtnRemoverFoto_Click(object sender, EventArgs e)
         {
-            if (lstFotos.SelectedItems.Count == 0) return;
-            // collect item indices (positions) and remove from _fotos in descending order to avoid shifting
-            var indices = lstFotos.SelectedItems.Cast<ListViewItem>()
-                .Select(it => lstFotos.Items.IndexOf(it))
-                .Where(i => i >= 0 && i < _fotos.Count)
-                .Distinct().OrderByDescending(i => i).ToList();
-            foreach (int idx in indices)
+            if (lstFotos.SelectedIndices.Count == 0) return;
+            foreach (int i in lstFotos.SelectedIndices.Cast<int>().OrderByDescending(x => x).ToList())
             {
-                _fotos.RemoveAt(idx);
+                _fotos.RemoveAt(i);
+                lstFotos.Items.RemoveAt(i);
             }
-            // rebuild visuals
-            RebuildImageListFromFotos();
             AtualizarContador();
-        }
-
-        private void RebuildImageListFromFotos()
-        {
-            imageListFotos.Images.Clear();
-            lstFotos.Items.Clear();
-            for (int i = 0; i < _fotos.Count; i++)
-            {
-                string f = _fotos[i];
-                try
-                {
-                    using var img = Image.FromFile(f);
-                    var thumb = new Bitmap(img, imageListFotos.ImageSize);
-                    imageListFotos.Images.Add(thumb);
-                }
-                catch { imageListFotos.Images.Add(SystemIcons.Warning.ToBitmap()); }
-                var li = new ListViewItem(Path.GetFileName(_fotos[i])) { ImageIndex = i, Tag = _fotos[i] };
-                lstFotos.Items.Add(li);
-            }
-        }
-
-        private void AddFiles(IEnumerable<string> files)
-        {
-            bool added = false;
-            foreach (string f in files)
-            {
-                if (!_fotos.Contains(f) && IsImageFile(f))
-                {
-                    _fotos.Add(f);
-                    added = true;
-                }
-            }
-            if (added)
-            {
-                RebuildImageListFromFotos();
-                AtualizarContador();
-            }
-        }
-
-        private static bool IsImageFile(string path)
-        {
-            string ext = Path.GetExtension(path).ToLowerInvariant();
-            return new[] {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp", ".gif"}.Contains(ext);
         }
 
         private async void BtnEnviar_Click(object sender, EventArgs e)
@@ -493,18 +431,6 @@ namespace FotoEnvio
                 MessageBox.Show("O campo Nome é obrigatório.", "Atenção",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 txtNome.Focus(); return;
-            }
-            if (string.IsNullOrWhiteSpace(txtEmail.Text))
-            {
-                MessageBox.Show("O campo E-mail é obrigatório.", "Atenção",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                txtEmail.Focus(); return;
-            }
-            if (string.IsNullOrWhiteSpace(txtTelefone.Text))
-            {
-                MessageBox.Show("O campo Telefone é obrigatório.", "Atenção",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                txtTelefone.Focus(); return;
             }
             if (_fotos.Count == 0)
             {
@@ -612,6 +538,7 @@ namespace FotoEnvio
             }
             SettingsManager.Current.DiretorioPadrao         = txtDiretorio.Text.Trim();
             SettingsManager.Current.DiretorioDownloadFtp     = txtDownloadFtp.Text.Trim();
+            SettingsManager.Current.CriarSubpastaData        = chkSubpastaData.Checked;
             SettingsManager.Current.ServidorNAS              = txtServidorNAS.Text.Trim();
             SettingsManager.Current.VerificarConexaoAoIniciar = chkVerificarConexao.Checked;
             SettingsManager.Save();
@@ -626,15 +553,15 @@ namespace FotoEnvio
         {
             txtDiretorio.Text           = SettingsManager.Current.DiretorioPadrao;
             txtDownloadFtp.Text         = SettingsManager.Current.DiretorioDownloadFtp;
+            chkSubpastaData.Checked     = SettingsManager.Current.CriarSubpastaData;
             txtServidorNAS.Text         = SettingsManager.Current.ServidorNAS;
             chkVerificarConexao.Checked = SettingsManager.Current.VerificarConexaoAoIniciar;
-            if (chkCriarSubpastaData != null) chkCriarSubpastaData.Checked = SettingsManager.Current.CriarSubpastaData;
         }
 
         private void LimparFormulario()
         {
             txtNome.Clear(); txtEmail.Clear(); txtTelefone.Clear();
-            lstFotos.Items.Clear(); _fotos.Clear(); imageListFotos.Images.Clear();
+            lstFotos.Items.Clear(); _fotos.Clear();
             AtualizarContador();
         }
 

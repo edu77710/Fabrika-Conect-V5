@@ -28,7 +28,7 @@ namespace FotoEnvio
         private TextBox      txtPrefixoAuto, txtRangeIni, txtRangeFim;
         private TextBox      txtPortaAuto, txtUserAuto, txtSenhaAuto;
         private Panel        pnlSinalAuto;
-        private Label        lblSinalAuto, lblStatusAuto, lblIpAutoConectado;
+        private Label        lblSinalAuto, lblStatusAuto, lblIpAutoConectado, lblContadorAuto;
         private Button       btnIniciarScan, btnPararScan;
         private DataGridView dgvArqAuto;
         private ProgressBar  pbScan;
@@ -211,23 +211,12 @@ namespace FotoEnvio
         {
             if (_ftpManual == null) return;
 
-            string baseDestino = SettingsManager.Current.DiretorioDownloadFtp;
-            if (string.IsNullOrWhiteSpace(baseDestino) || !Directory.Exists(baseDestino))
+            string destino = ResolverDestinoDownload();
+            if (destino == null)
             {
                 Info("Configure o Diretório de Download FTP na aba Configurações antes de baixar.");
                 tabControl.SelectedTab = tabConfig;
                 return;
-            }
-            // Se a opção estiver ativada, cria uma subpasta com a data atual (YYYYMMDD)
-            string destino = baseDestino;
-            bool criarSubpasta = true;
-            if (chkCriarSubpastaData != null) criarSubpasta = chkCriarSubpastaData.Checked;
-            else criarSubpasta = SettingsManager.Current.CriarSubpastaData;
-            if (criarSubpasta)
-            {
-                string sub = Path.Combine(baseDestino, DateTime.Now.ToString("yyyyMMdd"));
-                if (!Directory.Exists(sub)) Directory.CreateDirectory(sub);
-                destino = sub;
             }
 
             btnBuscarManual.Enabled      = false;
@@ -239,10 +228,15 @@ namespace FotoEnvio
             _ctsManual = new CancellationTokenSource();
             var ct = _ctsManual.Token;
 
+            int loopManualIteracao = 0;
+
             try
             {
                 do
                 {
+                    loopManualIteracao++;
+                    if (chkLoopManual.Checked)
+                        SafeUI(() => lblContadorManual.Text = $"🔁 Loop #{loopManualIteracao}");
                     // Verifica se ainda está conectado
                     bool conectado = await _ftpManual.TestarConexaoAsync(ct);
                     if (!conectado)
@@ -261,7 +255,8 @@ namespace FotoEnvio
 
                     dgvArqManual.Rows.Clear();
                     SetStatus(lblStatusManual, "🔍 Buscando arquivos no servidor FTP...");
-                    SafeUI(() => lblContadorManual.Text = "");
+                    if (!chkLoopManual.Checked)
+                        SafeUI(() => lblContadorManual.Text = "");
 
                     var prog = new Progress<string>(msg => SetStatus(lblStatusManual, msg));
                     var arquivos = await _ftpManual.ListarArquivosAsync("/", prog, ct);
@@ -296,7 +291,7 @@ namespace FotoEnvio
                             else        { falha++;  AdicionarLinhaGrid(dgvArqManual, arq, "❌ Falhou"); }
 
                             SafeUI(() => lblContadorManual.Text =
-                                $"✅ {ok} baixado(s)   ❌ {falha} falha(s)   de {arquivos.Count}");
+                                $"🔁 Loop #{loopManualIteracao}   ✅ {ok} baixado(s)   ❌ {falha} falha(s)   de {arquivos.Count}");
                         }
                     }
 
@@ -368,6 +363,7 @@ namespace FotoEnvio
             int x = 10;
             grpCfg.Controls.Add(L("Prefixo de Rede:", x, 20));
             txtPrefixoAuto = TB(x, 36, 115);
+            txtPrefixoAuto.Text = FtpHelper.ObterPrefixoRedeLocal();  // auto-detecta ao iniciar
             grpCfg.Controls.Add(txtPrefixoAuto); x += 125;
 
             grpCfg.Controls.Add(L("Início:", x, 20));
@@ -421,11 +417,15 @@ namespace FotoEnvio
                 Font = new Font("Segoe UI", 10f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(37, 99, 235), Location = new Point(10, 168) };
 
+            lblContadorAuto = new Label { Text = "", AutoSize = true,
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(22, 163, 74), Location = new Point(10, 186) };
+
             // Painel direito ocupa toda a largura (sem split — sem log de IPs)
             var grpArq = new GroupBox { Text = "Fotos baixadas do servidor conectado",
                 Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(60, 80, 120),
-                Location = new Point(10, 186), Size = new Size(860, 370) };
+                Location = new Point(10, 204), Size = new Size(860, 370) };
 
             dgvArqAuto = GridBase();
             ConfigurarColunasArquivos(dgvArqAuto);
@@ -433,7 +433,7 @@ namespace FotoEnvio
             grpArq.Controls.Add(dgvArqAuto);
 
             panelAuto.Controls.AddRange(new Control[]
-                { grpCfg, lblStatusAuto, pbScan, lblIpAutoConectado, grpArq });
+                { grpCfg, lblStatusAuto, pbScan, lblIpAutoConectado, lblContadorAuto, grpArq });
 
             panelAuto.Resize += (s, e) =>
             {
@@ -441,15 +441,15 @@ namespace FotoEnvio
                 grpCfg.Width  = w;
                 pbScan.Width  = w;
                 grpArq.Width  = w;
-                grpArq.Height = panelAuto.Height - 200;
+                grpArq.Height = panelAuto.Height - 218;
             };
         }
 
         // ── Eventos Auto ───────────────────────────────────────────────
         private async void BtnIniciarScan_Click(object sender, EventArgs e)
         {
-            string destino = SettingsManager.Current.DiretorioDownloadFtp;
-            if (string.IsNullOrWhiteSpace(destino) || !Directory.Exists(destino))
+            string destino = ResolverDestinoDownload();
+            if (destino == null)
             {
                 Info("Configure o Diretório de Download FTP na aba Configurações antes de iniciar.");
                 tabControl.SelectedTab = tabConfig;
@@ -575,11 +575,14 @@ namespace FotoEnvio
         private async Task LoopDownloadAuto(FtpHelper ftp, string ip, string destino, CancellationToken ct)
         {
             int falhasConsecutivas = 0;
+            int loopAutoIteracao   = 0;
 
             while (!ct.IsCancellationRequested)
             {
                 try
                 {
+                    loopAutoIteracao++;
+                    SafeUI(() => lblContadorAuto.Text = $"🔁 Loop #{loopAutoIteracao}");
                     SetStatus(lblStatusAuto, $"[{ip}] 🔍 Verificando conexão...");
 
                     bool ainda = await ftp.TestarConexaoAsync(ct);
@@ -654,6 +657,7 @@ namespace FotoEnvio
 
                     SetStatus(lblStatusAuto,
                         $"[{ip}] ✅ {ok} baixado(s)  ❌ {err} falha(s) — próxima verificação em {LOOP_INTERVALO_MS / 1000}s...");
+                    SafeUI(() => lblContadorAuto.Text = $"🔁 Loop #{loopAutoIteracao}   ✅ {ok} baixado(s)   ❌ {err} falha(s)");
                     await Task.Delay(LOOP_INTERVALO_MS, ct);
                 }
                 catch (OperationCanceledException) { return; }
@@ -682,6 +686,28 @@ namespace FotoEnvio
         // ==============================================================
         // HELPERS COMPARTILHADOS
         // ==============================================================
+
+        /// <summary>
+        /// Retorna o diretório de destino para downloads FTP.
+        /// Se CriarSubpastaData estiver ativo, cria (ou reutiliza) uma
+        /// subpasta com a data de hoje (yyyyMMdd) dentro do diretório base.
+        /// Retorna null se o diretório base não estiver configurado.
+        /// </summary>
+        private string ResolverDestinoDownload()
+        {
+            string base_ = SettingsManager.Current.DiretorioDownloadFtp;
+            if (string.IsNullOrWhiteSpace(base_) || !Directory.Exists(base_))
+                return null;
+
+            if (!SettingsManager.Current.CriarSubpastaData)
+                return base_;
+
+            string subpasta = Path.Combine(base_, DateTime.Now.ToString("yyyyMMdd"));
+            if (!Directory.Exists(subpasta))
+                Directory.CreateDirectory(subpasta);
+            return subpasta;
+        }
+
         private void AdicionarLinhaGrid(DataGridView dgv, FtpArquivo arq, string status)
         {
             SafeUI(() =>

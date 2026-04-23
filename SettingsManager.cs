@@ -13,20 +13,19 @@ namespace FotoEnvio
 
         // FTP download destination
         public string DiretorioDownloadFtp   { get; set; } = "";
+        public bool   CriarSubpastaData      { get; set; } = false;
 
         // FTP manual defaults
-        public string FtpPortaManual         { get; set; } = "2221";
-        public string FtpUsuarioManual       { get; set; } = "android";
-        public string FtpSenhaManual         { get; set; } = "android@";
+        public string FtpPortaManual         { get; set; } = "21";
+        public string FtpUsuarioManual       { get; set; } = "anonymous";
+        public string FtpSenhaManual         { get; set; } = "anonymous@";
 
         // FTP auto defaults
-        public string FtpPortaAuto           { get; set; } = "2221";
-        public string FtpUsuarioAuto         { get; set; } = "android";
-        public string FtpSenhaAuto           { get; set; } = "android@";
+        public string FtpPortaAuto           { get; set; } = "21";
+        public string FtpUsuarioAuto         { get; set; } = "anonymous";
+        public string FtpSenhaAuto           { get; set; } = "anonymous@";
         public string FtpRangeInicio         { get; set; } = "1";
         public string FtpRangeFim            { get; set; } = "254";
-        // Create dated subfolders for FTP downloads
-        public bool   CriarSubpastaData      { get; set; } = true;
     }
 
     public static class SettingsManager
