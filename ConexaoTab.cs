@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -81,8 +82,18 @@ namespace FotoEnvio
         {
             panelManual.Visible = manual;
             panelAuto.Visible   = !manual;
-            if (!manual && string.IsNullOrEmpty(txtPrefixoAuto.Text))
-                txtPrefixoAuto.Text = FtpHelper.ObterPrefixoRedeLocal();
+            if (!manual)
+            {
+                // Sempre re-detecta o prefixo de rede ao entrar no modo automático
+                string prefixoDetectado = FtpHelper.ObterPrefixoRedeLocal();
+                txtPrefixoAuto.Text = prefixoDetectado;
+
+                // Preenche range completo automaticamente se não tiver sido editado
+                if (txtRangeIni.Text == "" || txtRangeIni.Text == "1")
+                    txtRangeIni.Text = "1";
+                if (txtRangeFim.Text == "" || txtRangeFim.Text == "254")
+                    txtRangeFim.Text = "254";
+            }
         }
 
         // ==============================================================
@@ -228,15 +239,13 @@ namespace FotoEnvio
             _ctsManual = new CancellationTokenSource();
             var ct = _ctsManual.Token;
 
-            int loopManualIteracao = 0;
+            int loopManualIteracao = 0;  // mantido para referência futura
 
             try
             {
                 do
                 {
                     loopManualIteracao++;
-                    if (chkLoopManual.Checked)
-                        SafeUI(() => lblContadorManual.Text = $"🔁 Loop #{loopManualIteracao}");
                     // Verifica se ainda está conectado
                     bool conectado = await _ftpManual.TestarConexaoAsync(ct);
                     if (!conectado)
@@ -291,15 +300,20 @@ namespace FotoEnvio
                             else        { falha++;  AdicionarLinhaGrid(dgvArqManual, arq, "❌ Falhou"); }
 
                             SafeUI(() => lblContadorManual.Text =
-                                $"🔁 Loop #{loopManualIteracao}   ✅ {ok} baixado(s)   ❌ {falha} falha(s)   de {arquivos.Count}");
+                                $"✅ {ok} baixado(s)   ❌ {falha} falha(s)   de {arquivos.Count}");
                         }
                     }
 
                     if (chkLoopManual.Checked && !ct.IsCancellationRequested)
                     {
-                        SetStatus(lblStatusManual,
-                            $"⏳ Próxima varredura em {LOOP_INTERVALO_MS / 1000}s...");
-                        await Task.Delay(LOOP_INTERVALO_MS, ct);
+                        int segsManual = LOOP_INTERVALO_MS / 1000;
+                        while (segsManual > 0 && !ct.IsCancellationRequested)
+                        {
+                            SafeUI(() => lblContadorManual.Text =
+                                $"⏳ Próximo loop em {segsManual}s...");
+                            await Task.Delay(1000, ct);
+                            segsManual--;
+                        }
                     }
 
                 } while (chkLoopManual.Checked && !ct.IsCancellationRequested);
@@ -575,14 +589,11 @@ namespace FotoEnvio
         private async Task LoopDownloadAuto(FtpHelper ftp, string ip, string destino, CancellationToken ct)
         {
             int falhasConsecutivas = 0;
-            int loopAutoIteracao   = 0;
 
             while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    loopAutoIteracao++;
-                    SafeUI(() => lblContadorAuto.Text = $"🔁 Loop #{loopAutoIteracao}");
                     SetStatus(lblStatusAuto, $"[{ip}] 🔍 Verificando conexão...");
 
                     bool ainda = await ftp.TestarConexaoAsync(ct);
@@ -633,8 +644,15 @@ namespace FotoEnvio
                     if (arquivos.Count == 0)
                     {
                         SetStatus(lblStatusAuto,
-                            $"[{ip}] ✅ Sem novos arquivos. Próxima verificação em {LOOP_INTERVALO_MS / 1000}s...");
-                        await Task.Delay(LOOP_INTERVALO_MS, ct);
+                            $"[{ip}] ✅ Sem novos arquivos.");
+                        int segsVazio = LOOP_INTERVALO_MS / 1000;
+                        while (segsVazio > 0 && !ct.IsCancellationRequested)
+                        {
+                            SafeUI(() => lblContadorAuto.Text =
+                                $"⏳ Próximo loop em {segsVazio}s...");
+                            await Task.Delay(1000, ct);
+                            segsVazio--;
+                        }
                         continue;
                     }
 
@@ -656,9 +674,15 @@ namespace FotoEnvio
                     }
 
                     SetStatus(lblStatusAuto,
-                        $"[{ip}] ✅ {ok} baixado(s)  ❌ {err} falha(s) — próxima verificação em {LOOP_INTERVALO_MS / 1000}s...");
-                    SafeUI(() => lblContadorAuto.Text = $"🔁 Loop #{loopAutoIteracao}   ✅ {ok} baixado(s)   ❌ {err} falha(s)");
-                    await Task.Delay(LOOP_INTERVALO_MS, ct);
+                        $"[{ip}] ✅ {ok} baixado(s)  ❌ {err} falha(s)");
+                    int segsAuto = LOOP_INTERVALO_MS / 1000;
+                    while (segsAuto > 0 && !ct.IsCancellationRequested)
+                    {
+                        SafeUI(() => lblContadorAuto.Text =
+                            $"✅ {ok} baixado(s)   ❌ {err} falha(s)   ⏳ Próximo loop em {segsAuto}s...");
+                        await Task.Delay(1000, ct);
+                        segsAuto--;
+                    }
                 }
                 catch (OperationCanceledException) { return; }
                 catch { await Task.Delay(3000, ct); }
@@ -702,7 +726,14 @@ namespace FotoEnvio
             if (!SettingsManager.Current.CriarSubpastaData)
                 return base_;
 
-            string subpasta = Path.Combine(base_, DateTime.Now.ToString("yyyyMMdd"));
+            var cultura = new CultureInfo("pt-BR");
+            string nomePasta = DateTime.Now.ToString("dd_MMMM_yyyy", cultura);
+            // ex: 23_abril_2026 → capitaliza o mês
+            string[] partes = nomePasta.Split('_');
+            if (partes.Length == 3)
+                nomePasta = $"{partes[0]}_{char.ToUpper(partes[1][0]) + partes[1].Substring(1)}_{partes[2]}";
+
+            string subpasta = Path.Combine(base_, nomePasta);
             if (!Directory.Exists(subpasta))
                 Directory.CreateDirectory(subpasta);
             return subpasta;
